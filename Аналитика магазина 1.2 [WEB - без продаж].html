@@ -482,7 +482,10 @@ function handleFile(file){
     const res=processCSV(e.target.result);
     if(res.error){toast(res.error);return;}
     if(!activeId){ createProfile(file.name.replace(/\.csv$/i,'')||'Профиль 1'); }
+    const prev=activeId?loadProfileData(activeId):null;
+    const prevOrder=prev&&Array.isArray(prev.order)?prev.order:null;
     DATA={products:res.products,meta:res.meta,savedName:file.name,savedAt:Date.now()};
+    if(prevOrder){ const skus=new Set(res.products.map(p=>p.sku)); DATA.order=prevOrder.filter(s=>skus.has(s)); }
     selectedSku=DATA.products.length?bestFirst(DATA.products)[0].sku:null;
     saveProfileData(activeId,DATA); updateActiveIndexMeta(); render();
     toast(storageOK?`Загружено в «${activeProfileName()}»: ${res.meta.productCount} товаров.`:`Загружено: ${res.meta.productCount} товаров.`);
@@ -588,13 +591,16 @@ function filteredProfiles(){
 function drawerRowsHTML(){
   const list=filteredProfiles();
   if(!list.length) return `<div class="empty">${PROFILES.length?'Ничего не найдено':'Пока нет профилей'}</div>`;
+  const sortable = !profileQuery && PROFILES.length>1;
   return list.map(p=>{
     const active=p.id===activeId;
     const meta = p.productCount ? `${p.productCount} ${plural(p.productCount,'товар','товара','товаров')} · ${p.minDate} – ${p.maxDate}` : 'Нет данных — загрузите CSV';
     const del = confirmDeleteId===p.id
       ? `<span class="confirm"><span class="q">Удалить?</span><button class="mini danger" data-confirmdel="${p.id}">Да</button><button class="mini" data-canceldel="1">Нет</button></span>`
       : `<button class="mini del" data-del="${p.id}" title="Удалить профиль">✕</button>`;
-    return `<div class="prow ${active?'active':''}">
+    const handle = sortable ? `<span class="drag-handle" title="Перетащите, чтобы изменить порядок">${GRIP}</span>` : '';
+    return `<div class="prow ${active?'active':''}" data-pid="${p.id}">
+      ${handle}
       <button class="popen" data-open="${p.id}">
         <span class="pn">${escapeHtml(p.name)}${active?'<span class="badge">активный</span>':''}</span>
         <span class="pm">${escapeHtml(meta)}</span>
@@ -621,7 +627,7 @@ function refreshDrawerList(){
   el.innerHTML=drawerRowsHTML(); wireDrawerRows();
 }
 function wireDrawerRows(){
-  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ switchProfile(b.dataset.open); drawerOpen=false; profileQuery=''; renderMain(); updateDrawer(); });
+  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{ if(dragActive) return; switchProfile(b.dataset.open); drawerOpen=false; profileQuery=''; renderMain(); updateDrawer(); });
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ confirmDeleteId=b.dataset.del; refreshDrawerList(); });
   document.querySelectorAll('[data-canceldel]').forEach(b=>b.onclick=()=>{ confirmDeleteId=null; refreshDrawerList(); });
   document.querySelectorAll('[data-confirmdel]').forEach(b=>b.onclick=()=>{
@@ -631,6 +637,10 @@ function wireDrawerRows(){
     else { if(wasActive) renderMain(); refreshDrawerList(); }
     toast('Профиль «'+nm+'» удалён');
   });
+  if(!profileQuery && PROFILES.length>1){
+    const dl=document.getElementById('drawerList');
+    if(dl) enableDragSort(dl,'.prow',onProfilesReordered);
+  }
 }
 function wireDrawer(){
   const ov=document.getElementById('drawerOverlay');
@@ -903,11 +913,79 @@ function toggleChart(type){
   const d=document.getElementById('detail');
   if(d){ d.innerHTML=detailView(); wireDetail(); }
 }
+const GRIP=`<svg class="grip" viewBox="0 0 12 18" width="12" height="18" aria-hidden="true"><g fill="currentColor">${[4,9,14].map(y=>[4,8].map(x=>`<circle cx="${x}" cy="${y}" r="1.3"/>`).join('')).join('')}</g></svg>`;
+let dragActive=false;
+function flipReorder(container,itemSel,exclude,mutate){
+  const els=[...container.querySelectorAll(itemSel)].filter(x=>x!==exclude);
+  const firsts=els.map(el=>[el,el.getBoundingClientRect().top]);
+  mutate();
+  for(const [el,top0] of firsts){
+    const d=top0-el.getBoundingClientRect().top;
+    if(d){ el.style.transition='none'; el.style.transform=`translateY(${d}px)`;
+      requestAnimationFrame(()=>{ el.style.transition='transform .18s var(--ease)'; el.style.transform=''; }); }
+  }
+}
+function enableDragSort(container,itemSel,onReorder){
+  if(!container) return;
+  container.querySelectorAll('.drag-handle').forEach(h=>{
+    h.onclick=e=>{ e.preventDefault(); e.stopPropagation(); };
+    h.addEventListener('pointerdown',e=>startDrag(e,container,itemSel,onReorder));
+  });
+}
+function startDrag(e,container,itemSel,onReorder){
+  if(e.button!==undefined && e.button!==0) return;
+  const item=e.target.closest(itemSel); if(!item||item.parentNode!==container) return;
+  e.preventDefault(); e.stopPropagation();
+  const rect=item.getBoundingClientRect();
+  const ph=document.createElement('div'); ph.className='drag-ph'; ph.style.height=rect.height+'px';
+  container.insertBefore(ph,item);
+  Object.assign(item.style,{width:rect.width+'px',height:rect.height+'px',position:'fixed',left:rect.left+'px',top:rect.top+'px',margin:'0',zIndex:'2000',pointerEvents:'none'});
+  item.classList.add('dragging'); container.classList.add('dragging-active'); dragActive=true;
+  const dx=e.clientX-rect.left, dy=e.clientY-rect.top;
+  const onMove=ev=>{
+    item.style.left=(ev.clientX-dx)+'px'; item.style.top=(ev.clientY-dy)+'px';
+    const y=ev.clientY;
+    const sibs=[...container.querySelectorAll(itemSel)].filter(x=>x!==item);
+    let ref=null;
+    for(const s of sibs){ const r=s.getBoundingClientRect(); if(y<r.top+r.height/2){ ref=s; break; } }
+    if(ref!==ph.nextElementSibling){ flipReorder(container,itemSel,item,()=>container.insertBefore(ph,ref)); }
+  };
+  const onUp=()=>{
+    document.removeEventListener('pointermove',onMove);
+    document.removeEventListener('pointerup',onUp);
+    const target=ph.getBoundingClientRect();
+    item.style.transition='left .17s var(--ease),top .17s var(--ease)';
+    item.style.left=target.left+'px'; item.style.top=target.top+'px';
+    setTimeout(()=>{
+      item.style.transition='';item.style.width='';item.style.height='';item.style.position='';item.style.left='';item.style.top='';item.style.margin='';item.style.zIndex='';item.style.pointerEvents='';
+      item.classList.remove('dragging'); container.classList.remove('dragging-active');
+      container.insertBefore(item,ph); ph.remove();
+      const order=[...container.querySelectorAll(itemSel)].map(x=>x.dataset.sku||x.dataset.pid).filter(Boolean);
+      setTimeout(()=>{dragActive=false;},50);
+      onReorder(order);
+    },170);
+  };
+  document.addEventListener('pointermove',onMove);
+  document.addEventListener('pointerup',onUp);
+}
+function onProductsReordered(order){
+  DATA.order=order; saveProfileData(activeId,DATA);
+}
+function onProfilesReordered(order){
+  const map=new Map(PROFILES.map(p=>[p.id,p]));
+  const next=order.map(id=>map.get(id)).filter(Boolean);
+  for(const p of PROFILES) if(!order.includes(p.id)) next.push(p);
+  PROFILES=next; saveProfilesIndex();
+}
 function wireSidebar(){
   const search=document.getElementById('search');
   if(search) search.oninput=e=>{query=e.target.value;refreshSidebar();};
   document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{sortMode=b.dataset.sort;refreshSidebar();});
-  document.querySelectorAll('[data-sku]').forEach(b=>b.onclick=()=>selectProduct(b.dataset.sku));
+  document.querySelectorAll('[data-sku]').forEach(b=>b.onclick=()=>{ if(dragActive) return; selectProduct(b.dataset.sku); });
+  if(sortMode==='custom' && !query){
+    const plist=document.querySelector('.side .plist.sortable');
+    if(plist) enableDragSort(plist,'.pcard',onProductsReordered);
+  }
 }
 // select without rebuilding sidebar -> preserves list scroll position
 function selectProduct(sku){
