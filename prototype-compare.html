@@ -94,12 +94,20 @@
 
   <div class="controls">
     <div class="ctl">
+      <label>Ширина основного <span class="val" id="vMW">100%</span></label>
+      <input type="range" id="mwidth" min="20" max="100" value="100">
+    </div>
+    <div class="ctl">
+      <label>Сдвиг основного <span class="val" id="vMS">0%</span></label>
+      <input type="range" id="mshift" min="0" max="90" value="0">
+    </div>
+    <div class="ctl">
       <label>Сдвиг голубого <span class="val" id="vShift">45%</span></label>
       <input type="range" id="shift" min="0" max="90" value="45">
     </div>
     <div class="ctl">
       <label>Ширина голубого <span class="val" id="vWidth">55%</span></label>
-      <input type="range" id="width" min="40" max="100" value="55">
+      <input type="range" id="width" min="20" max="100" value="55">
     </div>
     <div class="ctl">
       <label>Прозрачность голубого <span class="val" id="vOp">0.85</span></label>
@@ -151,7 +159,7 @@ const CMP={week:curve(20,7,51),three:curve(20,22,67),month:curve(20,34,83),
 const DEFS=[{k:'week',title:'За неделю'},{k:'three',title:'За 3 недели'},{k:'month',title:'За месяц'}];
 let shown={week:true,three:true,month:true};
 let showNums=true;
-let P={shift:0.45,width:0.55,op:0.85};
+let P={shift:0.45,width:0.55,op:0.85,mwidth:1.0,mshift:0.0};
 
 function peakInfo(data){
   const max=Math.max(...data); if(max<=0) return null;
@@ -174,6 +182,7 @@ function chartMarkup(dataA,dataB){
   const y=v=>plotTop+plotH-(v/top)*plotH;
   const n=24,gap=6,bw=(plotW-gap*(n-1))/n;
   const bwB=bw*P.width, shift=bw*P.shift;
+  const bwA=bw*P.mwidth, shiftA=bw*P.mshift;
   const peakA=peakInfo(dataA);
   let s='';
   for(let g=0;g<=top;g+=step){
@@ -190,9 +199,9 @@ function chartMarkup(dataA,dataB){
   }
   // main bars (teal, peak orange)
   dataA.forEach((v,i)=>{
-    const x=plotX+i*(bw+gap),bh=(v/top)*plotH,yy=plotTop+plotH-bh,isPeak=(peakA&&v>0&&i===peakA.idx);
-    s+=`<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="2.5" fill="${isPeak?C.PEAK:C.BAR}"/>`;
-    s+=`<text x="${(x+bw/2).toFixed(1)}" y="${(oy+H-10).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="${C.INKSOFT}" font-family="Segoe UI,Arial">${String(i).padStart(2,'0')}</text>`;
+    const x=plotX+i*(bw+gap)+shiftA,bh=(v/top)*plotH,yy=plotTop+plotH-bh,isPeak=(peakA&&v>0&&i===peakA.idx);
+    s+=`<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bwA.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="2.5" fill="${isPeak?C.PEAK:C.BAR}"/>`;
+    s+=`<text x="${(plotX+i*(bw+gap)+bw/2).toFixed(1)}" y="${(oy+H-10).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="${C.INKSOFT}" font-family="Segoe UI,Arial">${String(i).padStart(2,'0')}</text>`;
   });
   // comparison bars (light blue, narrower, shifted)
   dataB.forEach((v,i)=>{
@@ -203,7 +212,7 @@ function chartMarkup(dataA,dataB){
   if(showNums){
     dataA.forEach((v,i)=>{
       if(v<=0) return;
-      const x=plotX+i*(bw+gap)+bw/2,bh=(v/top)*plotH,yy=plotTop+plotH-bh;
+      const x=plotX+i*(bw+gap)+shiftA+bwA/2,bh=(v/top)*plotH,yy=plotTop+plotH-bh;
       const isPeak=(peakA&&i===peakA.idx);
       s+=`<text class="num" x="${x.toFixed(1)}" y="${(yy-5).toFixed(1)}" text-anchor="middle" font-size="8.6" fill="${isPeak?C.PEAKINK:C.BARINK}">${v}</text>`;
     });
@@ -278,6 +287,8 @@ function wireTips(){
 }
 
 // wiring
+document.getElementById('mwidth').oninput=e=>{P.mwidth=+e.target.value/100;document.getElementById('vMW').textContent=e.target.value+'%';render();};
+document.getElementById('mshift').oninput=e=>{P.mshift=+e.target.value/100;document.getElementById('vMS').textContent=e.target.value+'%';render();};
 document.getElementById('shift').oninput=e=>{P.shift=+e.target.value/100;document.getElementById('vShift').textContent=e.target.value+'%';render();};
 document.getElementById('width').oninput=e=>{P.width=+e.target.value/100;document.getElementById('vWidth').textContent=e.target.value+'%';render();};
 document.getElementById('op').oninput=e=>{P.op=+e.target.value/100;document.getElementById('vOp').textContent=(+e.target.value/100).toFixed(2);render();};
