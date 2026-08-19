@@ -809,10 +809,23 @@ function compareBlockView(def, pA, pB, mA, mB){
   </div>`;
 }
 function compareProfileName(){ const p=PROFILES.find(x=>x.id===compareWith); return p?p.name:''; }
+// aggregate any profile's data into a "Весь магазин" pseudo-product
+function storeAggregateOf(data){
+  const w=Array(24).fill(0),t=Array(24).fill(0),mo=Array(24).fill(0);
+  let wTot=0,tTot=0,mTot=0;
+  for(const p of data.products){
+    for(let h=0;h<24;h++){ w[h]+=p.week[h]; t[h]+=p.three[h]; mo[h]+=p.month[h]; }
+    wTot+=p.wTot; tTot+=p.tTot; mTot+=p.mTot;
+  }
+  return {isAll:true,name:'Весь магазин',count:data.products.length,sku:ALL_KEY,week:w,three:t,month:mo,wTot,tTot,mTot};
+}
 function compareSelection(){
-  if(!compareWith || selectedSku===ALL_KEY) return null;
+  if(!compareWith) return null;
   const dd=loadProfileData(compareWith);
   if(!dd || !dd.products) return null;
+  if(selectedSku===ALL_KEY){                     // whole-store compare: sums only, SKUs irrelevant
+    return dd.products.length ? {product:storeAggregateOf(dd), meta:dd.meta} : null;
+  }
   const pB=dd.products.find(x=>x.sku===selectedSku);
   return pB ? {product:pB, meta:dd.meta} : null;
 }
@@ -823,8 +836,8 @@ function detailView(){
   if(!p) return `<div class="detail-empty"><h3>Товар не найден</h3></div>`;
   const m=DATA.meta;
   const active=CHART_DEFS.filter(d=>charts[d.k]);
-  const canCompare = selectedSku!==ALL_KEY && PROFILES.length>1;
-  const cmpMode = !!compareWith && selectedSku!==ALL_KEY;
+  const canCompare = PROFILES.length>1;
+  const cmpMode = !!compareWith;
   const cmp = cmpMode ? compareSelection() : null;
   const noCharts = `<div class="noorders">Не выбран ни один график. Включите нужные в меню «Показывать графики».</div>`;
   let blocks;
@@ -833,7 +846,9 @@ function detailView(){
       ? active.map(d=>compareBlockView(d, p, cmp.product, m, cmp.meta)).join('')
       : noCharts;
   } else if(cmpMode && !cmp){
-    blocks = `<div class="noorders">В профиле «${escapeHtml(compareProfileName())}» нет товара с SKU ${escapeHtml(selectedSku)}. Выберите другой профиль или выйдите из сравнения.</div>`;
+    blocks = selectedSku===ALL_KEY
+      ? `<div class="noorders">В профиле «${escapeHtml(compareProfileName())}» нет данных для сравнения. Выберите другой профиль или выйдите из сравнения.</div>`
+      : `<div class="noorders">В профиле «${escapeHtml(compareProfileName())}» нет товара с SKU ${escapeHtml(selectedSku)}. Выберите другой профиль или выйдите из сравнения.</div>`;
   } else {
     blocks = active.length
       ? active.map(d=>chartBlockView(d.title, d.span(m), d.data(p), d.tot(p))).join('')
@@ -879,7 +894,7 @@ function detailView(){
 function buildExportSVG(p){
   const W=1080, pad=40, chartW=W-pad*2, chartH=250;
   const m=DATA.meta;
-  const cmp=(compareWith && !p.isAll)?compareSelection():null;
+  const cmp=compareWith?compareSelection():null;
   const blocks=CHART_DEFS.filter(d=>charts[d.k]).map(d=>({
     t:d.title, s:d.span(m), d:d.data(p), tot:d.tot(p),
     dB:cmp?d.data(cmp.product):null, totB:cmp?d.tot(cmp.product):0, sB:cmp?d.span(cmp.meta):''
@@ -947,13 +962,7 @@ function renderReportBlob(p){
 }
 function buildStoreAggregate(){
   if(DATA._agg) return DATA._agg;
-  const w=Array(24).fill(0), t=Array(24).fill(0), mo=Array(24).fill(0);
-  let wTot=0,tTot=0,mTot=0;
-  for(const p of DATA.products){
-    for(let h=0;h<24;h++){ w[h]+=p.week[h]; t[h]+=p.three[h]; mo[h]+=p.month[h]; }
-    wTot+=p.wTot; tTot+=p.tTot; mTot+=p.mTot;
-  }
-  DATA._agg={isAll:true,name:'Весь магазин',count:DATA.products.length,sku:ALL_KEY,week:w,three:t,month:mo,wTot,tTot,mTot};
+  DATA._agg=storeAggregateOf(DATA);
   return DATA._agg;
 }
 function currentSelection(){ return selectedSku===ALL_KEY ? buildStoreAggregate() : (DATA.products.find(x=>x.sku===selectedSku)||null); }
@@ -1016,14 +1025,15 @@ function refreshDetail(){ const d=document.getElementById('detail'); if(d){ d.in
 
 /* ---------- compare: pick a profile, match by SKU ---------- */
 function compareModalView(){
-  const sku=selectedSku;
+  const all = selectedSku===ALL_KEY;
   const others=PROFILES.filter(p=>p.id!==activeId);
   const rows=others.map(p=>{
     const dd=loadProfileData(p.id);
-    const found = dd&&dd.products ? dd.products.find(x=>x.sku===sku) : null;
-    const meta = found
-      ? `${found.mTot} ${plural(found.mTot,'ед.','ед.','ед.')} за месяц · ${dd.meta.minDate} – ${dd.meta.maxDate}`
-      : 'нет этого товара';
+    const hasData = !!(dd && dd.products && dd.products.length);
+    const found = all ? hasData : (dd&&dd.products ? dd.products.find(x=>x.sku===selectedSku) : null);
+    let meta;
+    if(all) meta = hasData ? `${dd.meta.totalQty} ед. всего · ${dd.meta.minDate} – ${dd.meta.maxDate}` : 'нет данных';
+    else meta = found ? `${found.mTot} ед. за месяц · ${dd.meta.minDate} – ${dd.meta.maxDate}` : 'нет этого товара';
     return `<div class="prow ${found?'':'disabled'}">
       <button class="popen" ${found?`data-cmp="${p.id}"`:'disabled'}>
         <span class="pn">${escapeHtml(p.name)}</span>
@@ -1032,9 +1042,12 @@ function compareModalView(){
     </div>`;
   }).join('');
   const body = others.length ? rows : `<div class="empty">Нет других профилей для сравнения</div>`;
+  const hint = all
+    ? 'Сравниваются суммы магазина по часам — какие именно товары, не важно.'
+    : `Товар найдётся автоматически по SKU ${escapeHtml(selectedSku)}. Профили без этого товара недоступны.`;
   return `<div class="overlay" id="cmpOverlay"><div class="modal">
-    <div class="modal-head"><h3>Сравнить с профилем</h3><button class="mclose" id="cmpClose" title="Закрыть">✕</button></div>
-    <div class="cmp-hint">Товар найдётся автоматически по SKU ${escapeHtml(sku)}. Профили без этого товара недоступны.</div>
+    <div class="modal-head"><h3>${all?'Сравнить магазин с профилем':'Сравнить с профилем'}</h3><button class="mclose" id="cmpClose" title="Закрыть">✕</button></div>
+    <div class="cmp-hint">${hint}</div>
     <div class="prows">${body}</div>
   </div></div>`;
 }
