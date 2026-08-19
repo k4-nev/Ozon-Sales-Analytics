@@ -1,0 +1,37 @@
+{
+  "name": "analytics-app",
+  "version": "1.4.1",
+  "description": "Аналитика продаж по товарам магазина",
+  "main": "main.js",
+  "author": "Owner",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.shop.analytics",
+    "productName": "Аналитика магазина",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "app/**/*", "build/**/*"],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Аналитика магазина"
+    },
+    "portable": {
+      "artifactName": "Аналитика магазина - портативная.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
