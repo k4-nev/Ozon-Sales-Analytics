@@ -94,20 +94,20 @@
 
   <div class="controls">
     <div class="ctl">
-      <label>Ширина основного <span class="val" id="vMW">100%</span></label>
-      <input type="range" id="mwidth" min="20" max="100" value="100">
+      <label>Ширина основного <span class="val" id="vMW">45%</span></label>
+      <input type="range" id="mwidth" min="20" max="100" value="45">
     </div>
     <div class="ctl">
       <label>Сдвиг основного <span class="val" id="vMS">0%</span></label>
       <input type="range" id="mshift" min="0" max="90" value="0">
     </div>
     <div class="ctl">
-      <label>Сдвиг голубого <span class="val" id="vShift">45%</span></label>
-      <input type="range" id="shift" min="0" max="90" value="45">
+      <label>Сдвиг голубого <span class="val" id="vShift">55%</span></label>
+      <input type="range" id="shift" min="0" max="90" value="55">
     </div>
     <div class="ctl">
-      <label>Ширина голубого <span class="val" id="vWidth">55%</span></label>
-      <input type="range" id="width" min="20" max="100" value="55">
+      <label>Ширина голубого <span class="val" id="vWidth">45%</span></label>
+      <input type="range" id="width" min="20" max="100" value="45">
     </div>
     <div class="ctl">
       <label>Прозрачность голубого <span class="val" id="vOp">0.85</span></label>
@@ -159,7 +159,7 @@ const CMP={week:curve(20,7,51),three:curve(20,22,67),month:curve(20,34,83),
 const DEFS=[{k:'week',title:'За неделю'},{k:'three',title:'За 3 недели'},{k:'month',title:'За месяц'}];
 let shown={week:true,three:true,month:true};
 let showNums=true;
-let P={shift:0.45,width:0.55,op:0.85,mwidth:1.0,mshift:0.0};
+let P={shift:0.55,width:0.45,op:0.85,mwidth:0.45,mshift:0.0};
 
 function peakInfo(data){
   const max=Math.max(...data); if(max<=0) return null;
@@ -219,10 +219,7 @@ function chartMarkup(dataA,dataB){
     dataB.forEach((v,i)=>{
       if(v<=0) return;
       const x=plotX+i*(bw+gap)+shift+bwB/2,bh=(v/top)*plotH,yy=plotTop+plotH-bh;
-      // if comparison bar top is close to main bar top, nudge its number a little higher to avoid overlap
-      const aBh=(dataA[i]/top)*plotH; const near=Math.abs(bh-aBh)<11;
-      const dy=near?-14:-5;
-      s+=`<text class="num" x="${x.toFixed(1)}" y="${(yy+dy).toFixed(1)}" text-anchor="middle" font-size="8.6" fill="${C.CMPINK}">${v}</text>`;
+      s+=`<text class="num" x="${x.toFixed(1)}" y="${(yy-5).toFixed(1)}" text-anchor="middle" font-size="8.6" fill="${C.CMPINK}">${v}</text>`;
     });
   }
   // hit areas on top (transparent)
