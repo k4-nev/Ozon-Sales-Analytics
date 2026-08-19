@@ -279,6 +279,26 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   input[type=file]{display:none}
 
+  /* ---------- comparison ---------- */
+  .cmp-pill{display:inline-flex;align-items:center;gap:8px;background:#E4F4FC;border:1px solid #BEE3F4;color:var(--cmp-ink,#12658C);font-size:12px;font-weight:600;border-radius:999px;padding:5px 12px;margin-top:10px}
+  .cmp-pill .cmp-x{border:none;background:rgba(18,101,140,.12);color:#12658C;width:20px;height:20px;border-radius:6px;font-size:12px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .12s var(--ease)}
+  .cmp-pill .cmp-x:hover{background:rgba(18,101,140,.22)}
+  .cmp-totals{font-size:12.5px;color:var(--ink-soft);margin:2px 0 10px}
+  .cmp-totals b{color:var(--ink);font-weight:700}
+  .cmp-delta.up{color:#1E8A5A;font-weight:700}
+  .cmp-delta.down{color:#C0473C;font-weight:700}
+  .cmp-peaks{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .cmp-peak{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:7px 12px;font-size:12.5px;line-height:1.35}
+  .cmp-peak .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .cmp-peak.a{background:linear-gradient(180deg,#FEF6EA,#FDF1DE);border:1px solid #F1D9AE;color:var(--peak-ink)}
+  .cmp-peak.a .dot{background:var(--peak)}
+  .cmp-peak.b{background:#E4F4FC;border:1px solid #BEE3F4;color:#12658C}
+  .cmp-peak.b .dot{background:#20A8E6}
+  .cmp-peak b{font-weight:800}
+  .cmp-hint{font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.5}
+  .prow.disabled{opacity:.5}
+  .prow .popen[disabled]{cursor:default}
+
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important;transition:none !important}
   }
@@ -292,7 +312,9 @@
 
 <script>
 /* ===================== CONFIG / COLORS ===================== */
-const C={BAR:'#2E7D6F',PEAK:'#F2A03D',GRID:'#DCE3E0',INK:'#12302A',INKSOFT:'#5A6E68',PEAKINK:'#8A5410'};
+const C={BAR:'#2E7D6F',PEAK:'#F2A03D',GRID:'#DCE3E0',INK:'#12302A',INKSOFT:'#5A6E68',PEAKINK:'#8A5410',CMP:'#20A8E6',CMPINK:'#12658C'};
+/* compare-overlay layout (paired bars, fixed): main left 45%, comparison right (shift 55% / width 45%) */
+const CMP_MAIN_W=0.45, CMP_B_W=0.45, CMP_B_SHIFT=0.55, CMP_B_OP=0.85;
 const STORE_KEY='analyse_store_v1';
 const PROFILES_KEY='analyse_profiles_v1';
 const ACTIVE_KEY='analyse_active_profile_v1';
@@ -370,16 +392,20 @@ function niceStep(max, maxTicks){
   const nice = norm<=1?1 : norm<=2?2 : norm<=5?5 : 10;
   return Math.max(1, Math.round(nice*mag));
 }
-function chartMarkup(data,ox,oy,W,H){
+function chartMarkup(data,ox,oy,W,H,dataB){
   const gutter=34,padTop=22,padBottom=28,rightPad=8;
   const plotX=ox+gutter, plotTop=oy+padTop;
   const plotW=W-gutter-rightPad, plotH=H-padTop-padBottom;
-  const max=Math.max(...data,1);
+  const cmp=Array.isArray(dataB);
+  const max=Math.max(...data,...(cmp?dataB:[]),1);
   const step=niceStep(max,8);
   const top=Math.ceil(max/step)*step;
   const y=v=>plotTop+plotH-(v/top)*plotH;
   const n=24,gap=6,bw=(plotW-gap*(n-1))/n;
-  const peakIdx=data.indexOf(max);
+  const bwMain=cmp?bw*CMP_MAIN_W:bw, bwB=bw*CMP_B_W, shiftB=bw*CMP_B_SHIFT;
+  const peakIdx=data.indexOf(Math.max(...data));
+  const peakIdxB=cmp?dataB.indexOf(Math.max(...dataB)):-1;
+  const halo=cmp?' paint-order="stroke" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"':'';
   let s='';
   for(let g=0;g<=top;g+=step){
     const yy=y(g).toFixed(1);
@@ -389,9 +415,15 @@ function chartMarkup(data,ox,oy,W,H){
   data.forEach((v,i)=>{
     const x=plotX+i*(bw+gap);
     const bh=(v/top)*plotH, yy=plotTop+plotH-bh, isPeak=(v>0&&i===peakIdx);
-    s+=`<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="2.5" fill="${isPeak?C.PEAK:C.BAR}" style="animation-delay:${(i*7)}ms"/>`;
-    if(v>0) s+=`<text x="${(x+bw/2).toFixed(1)}" y="${(yy-5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${isPeak?C.PEAKINK:C.INK}" font-family="Segoe UI,Arial,sans-serif">${v}</text>`;
+    s+=`<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bwMain.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="2.5" fill="${isPeak?C.PEAK:C.BAR}" style="animation-delay:${(i*7)}ms"/>`;
+    if(v>0) s+=`<text x="${(x+bwMain/2).toFixed(1)}" y="${(yy-5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${isPeak?C.PEAKINK:C.INK}"${halo} font-family="Segoe UI,Arial,sans-serif">${v}</text>`;
     s+=`<text x="${(x+bw/2).toFixed(1)}" y="${(oy+H-10).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="${C.INKSOFT}" font-family="Segoe UI,Arial,sans-serif">${String(i).padStart(2,'0')}</text>`;
+  });
+  if(cmp) dataB.forEach((v,i)=>{
+    const x=plotX+i*(bw+gap)+shiftB;
+    const bh=(v/top)*plotH, yy=plotTop+plotH-bh;
+    s+=`<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${bwB.toFixed(1)}" height="${Math.max(bh,0).toFixed(1)}" rx="2.5" fill="${C.CMP}" fill-opacity="${CMP_B_OP}" style="animation-delay:${(i*7)}ms"/>`;
+    if(v>0) s+=`<text x="${(x+bwB/2).toFixed(1)}" y="${(yy-5).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="700" fill="${C.CMPINK}"${halo} font-family="Segoe UI,Arial,sans-serif">${v}</text>`;
   });
   return s;
 }
@@ -404,7 +436,7 @@ function peakInfo(data){
 }
 
 /* ===================== STATE ===================== */
-let DATA=null; let selectedSku=null; let sortMode='sales_desc'; let query=''; let storageOK=true;
+let DATA=null; let selectedSku=null; let sortMode='sales_desc'; let query=''; let storageOK=true; let compareWith=null;
 let PROFILES=[]; let activeId=null; const memData={}; let drawerOpen=false; let confirmDeleteId=null; let profileQuery='';
 let charts={week:true,three:true,month:true};
 
@@ -430,11 +462,13 @@ function createProfile(name){
 }
 function switchProfile(id){
   if(id===activeId){ return; }
+  compareWith=null;
   activeId=id; DATA=loadProfileData(id);
   selectedSku = (DATA && DATA.products && DATA.products.length) ? bestFirst(DATA.products)[0].sku : null;
   saveActive();
 }
 function deleteProfile(id){
+  if(compareWith===id) compareWith=null;
   deleteProfileData(id);
   PROFILES=PROFILES.filter(p=>p.id!==id);
   saveProfilesIndex();
@@ -484,6 +518,7 @@ function handleFile(file){
     if(!activeId){ createProfile(file.name.replace(/\.csv$/i,'')||'Профиль 1'); }
     const prev=activeId?loadProfileData(activeId):null;
     const prevOrder=prev&&Array.isArray(prev.order)?prev.order:null;
+    compareWith=null;
     DATA={products:res.products,meta:res.meta,savedName:file.name,savedAt:Date.now()};
     if(prevOrder){ const skus=new Set(res.products.map(p=>p.sku)); DATA.order=prevOrder.filter(s=>skus.has(s)); }
     selectedSku=DATA.products.length?bestFirst(DATA.products)[0].sku:null;
@@ -754,33 +789,88 @@ function chartBlockView(title,span,data,total){
   </div>`;
 }
 
+// one period block in compare mode: paired bars (main + comparison), totals + two peak cards
+function compareBlockView(def, pA, pB, mA, mB){
+  const dA=def.data(pA), dB=def.data(pB);
+  const tA=def.tot(pA), tB=def.tot(pB);
+  const peakA=peakInfo(dA), peakB=peakInfo(dB);
+  const d=tB-tA, dCls=d>=0?'up':'down', dTxt=(d>=0?'+':'')+d;
+  const totals=`<div class="cmp-totals">Всего: <b>${tA}</b> ед. (осн.) · <b>${tB}</b> ед. (сравн.) · разница <span class="cmp-delta ${dCls}">${dTxt} ед.</span></div>`;
+  const cardA=peakA?`<div class="cmp-peak a"><span class="dot"></span><span>Основной · пик <b>${peakA.hh}:00–${peakA.hh2}:00</b> — ${peakA.val} ед.</span></div>`:'';
+  const cardB=peakB?`<div class="cmp-peak b"><span class="dot"></span><span>Сравн. · пик <b>${peakB.hh}:00–${peakB.hh2}:00</b> — ${peakB.val} ед.</span></div>`:'';
+  const body=(tA>0||tB>0)
+    ? `<svg class="chart" viewBox="0 0 1040 280">${chartMarkup(dA,0,0,1040,280,dB)}</svg>`
+    : `<div class="noorders">Нет заказов за этот период ни в одном профиле</div>`;
+  return `<div class="panel">
+    <div class="panel-head"><h3>${def.title}</h3><span class="span">осн.: ${def.span(mA)}<br>сравн.: ${def.span(mB)}</span></div>
+    ${totals}
+    <div class="cmp-peaks">${cardA}${cardB}</div>
+    ${body}
+  </div>`;
+}
+function compareProfileName(){ const p=PROFILES.find(x=>x.id===compareWith); return p?p.name:''; }
+function compareSelection(){
+  if(!compareWith || selectedSku===ALL_KEY) return null;
+  const dd=loadProfileData(compareWith);
+  if(!dd || !dd.products) return null;
+  const pB=dd.products.find(x=>x.sku===selectedSku);
+  return pB ? {product:pB, meta:dd.meta} : null;
+}
+
 function detailView(){
   if(!selectedSku) return `<div class="detail-empty"><h3>Выберите товар</h3><p>Слева — кнопка «Весь магазин» для сводного отчёта и список всех товаров. Нажмите на любой, чтобы увидеть три графика продаж по часам.</p></div>`;
   const p=currentSelection();
   if(!p) return `<div class="detail-empty"><h3>Товар не найден</h3></div>`;
   const m=DATA.meta;
   const active=CHART_DEFS.filter(d=>charts[d.k]);
-  const blocks = active.length
-    ? active.map(d=>chartBlockView(d.title, d.span(m), d.data(p), d.tot(p))).join('')
-    : `<div class="noorders">Не выбран ни один график. Включите нужные в меню «Показывать графики».</div>`;
+  const canCompare = selectedSku!==ALL_KEY && PROFILES.length>1;
+  const cmpMode = !!compareWith && selectedSku!==ALL_KEY;
+  const cmp = cmpMode ? compareSelection() : null;
+  const noCharts = `<div class="noorders">Не выбран ни один график. Включите нужные в меню «Показывать графики».</div>`;
+  let blocks;
+  if(cmpMode && cmp){
+    blocks = active.length
+      ? active.map(d=>compareBlockView(d, p, cmp.product, m, cmp.meta)).join('')
+      : noCharts;
+  } else if(cmpMode && !cmp){
+    blocks = `<div class="noorders">В профиле «${escapeHtml(compareProfileName())}» нет товара с SKU ${escapeHtml(selectedSku)}. Выберите другой профиль или выйдите из сравнения.</div>`;
+  } else {
+    blocks = active.length
+      ? active.map(d=>chartBlockView(d.title, d.span(m), d.data(p), d.tot(p))).join('')
+      : noCharts;
+  }
   const sub = p.isAll
     ? `Сумма по всем товарам · ${p.count} товаров · ${p.mTot} ед. за месяц`
     : `SKU ${escapeHtml(p.sku)} · ${p.mTot} ед. за месяц`;
+  const pill = cmpMode
+    ? `<div class="cmp-pill">Сравнение с профилем «<b>${escapeHtml(compareProfileName())}</b>» <button class="cmp-x" id="exitCompareBtn" title="Выйти из сравнения">✕</button></div>`
+    : '';
+  const compareBtn = (canCompare && !cmpMode)
+    ? `<button class="btn ghost" id="compareBtn">Сравнить</button>` : '';
+  const legend = cmpMode
+    ? `<div class="legend">
+        <span><i class="swatch" style="background:${C.BAR}"></i>Основной период</span>
+        <span><i class="swatch" style="background:${C.PEAK}"></i>Пик основного</span>
+        <span><i class="swatch" style="background:${C.CMP}"></i>Сравниваемый профиль</span>
+      </div>`
+    : `<div class="legend">
+        <span><i class="swatch" style="background:${C.BAR}"></i>Продажи за час</span>
+        <span><i class="swatch" style="background:${C.PEAK}"></i>Пиковый час</span>
+      </div>`;
   return `<div id="report" class="fadeUp">
     <div class="dhead">
       <div>
         <h2>${escapeHtml(p.name)}</h2>
         <div class="sku">${sub}</div>
+        ${pill}
       </div>
       <div class="dbtns">
+        ${compareBtn}
         <button class="btn" id="exportBtn">Скачать PNG</button>
         <button class="btn ghost" id="copyBtn">Скопировать отчёт</button>
       </div>
     </div>
-    <div class="legend">
-      <span><i class="swatch" style="background:${C.BAR}"></i>Продажи за час</span>
-      <span><i class="swatch" style="background:${C.PEAK}"></i>Пиковый час</span>
-    </div>
+    ${legend}
     ${blocks}
   </div>`;
 }
@@ -789,28 +879,45 @@ function detailView(){
 function buildExportSVG(p){
   const W=1080, pad=40, chartW=W-pad*2, chartH=250;
   const m=DATA.meta;
-  const blocks=CHART_DEFS.filter(d=>charts[d.k]).map(d=>({t:d.title,s:d.span(m),d:d.data(p),tot:d.tot(p)}));
-  const headH=96, legendH=26, blockHead=54, blockGap=20;
+  const cmp=(compareWith && !p.isAll)?compareSelection():null;
+  const blocks=CHART_DEFS.filter(d=>charts[d.k]).map(d=>({
+    t:d.title, s:d.span(m), d:d.data(p), tot:d.tot(p),
+    dB:cmp?d.data(cmp.product):null, totB:cmp?d.tot(cmp.product):0, sB:cmp?d.span(cmp.meta):''
+  }));
+  const headH=cmp?112:96, legendH=26, blockHead=cmp?68:54, blockGap=20;
   const totalH = pad + headH + legendH + blocks.length*(blockHead+chartH+blockGap) + pad;
   const F='font-family="Segoe UI,Arial,sans-serif"';
   let y=pad, s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${totalH}" viewBox="0 0 ${W} ${totalH}">`;
   s+=`<rect width="${W}" height="${totalH}" fill="#FFFFFF"/>`;
-  s+=`<text x="${pad}" y="${y+28}" font-size="26" font-weight="800" fill="${C.INK}" ${F}>Пики продаж по часам</text>`;
+  s+=`<text x="${pad}" y="${y+28}" font-size="26" font-weight="800" fill="${C.INK}" ${F}>Пики продаж по часам${cmp?' — сравнение':''}</text>`;
   s+=`<text x="${pad}" y="${y+56}" font-size="15" font-weight="700" fill="${C.INK}" ${F}>${escapeHtml(p.isAll?'Весь магазин — сумма по всем товарам':clip(p.name,90))}</text>`;
   s+=`<text x="${pad}" y="${y+78}" font-size="12.5" fill="${C.INKSOFT}" ${F}>${p.isAll?`${p.count} товаров`:('SKU '+escapeHtml(p.sku))} · ${p.mTot} ед. за месяц · периоды от последнего заказа · время МСК</text>`;
+  if(cmp) s+=`<text x="${pad}" y="${y+98}" font-size="12.5" font-weight="600" fill="${C.CMPINK}" ${F}>Сравнение с профилем «${escapeHtml(clip(compareProfileName(),70))}»</text>`;
   s+=`<line x1="${pad}" y1="${y+headH-6}" x2="${W-pad}" y2="${y+headH-6}" stroke="${C.INK}" stroke-width="2"/>`;
   y+=headH;
-  s+=`<rect x="${pad}" y="${y+2}" width="12" height="12" rx="3" fill="${C.BAR}"/><text x="${pad+18}" y="${y+12}" font-size="12" fill="${C.INKSOFT}" ${F}>Продажи за час</text>`;
-  s+=`<rect x="${pad+150}" y="${y+2}" width="12" height="12" rx="3" fill="${C.PEAK}"/><text x="${pad+168}" y="${y+12}" font-size="12" fill="${C.INKSOFT}" ${F}>Пиковый час</text>`;
+  s+=`<rect x="${pad}" y="${y+2}" width="12" height="12" rx="3" fill="${C.BAR}"/><text x="${pad+18}" y="${y+12}" font-size="12" fill="${C.INKSOFT}" ${F}>${cmp?'Основной период':'Продажи за час'}</text>`;
+  s+=`<rect x="${pad+150}" y="${y+2}" width="12" height="12" rx="3" fill="${C.PEAK}"/><text x="${pad+168}" y="${y+12}" font-size="12" fill="${C.INKSOFT}" ${F}>Пик основного</text>`;
+  if(cmp) s+=`<rect x="${pad+300}" y="${y+2}" width="12" height="12" rx="3" fill="${C.CMP}"/><text x="${pad+318}" y="${y+12}" font-size="12" fill="${C.INKSOFT}" ${F}>Сравниваемый профиль</text>`;
   y+=legendH;
   for(const b of blocks){
     s+=`<text x="${pad}" y="${y+20}" font-size="17" font-weight="800" fill="${C.INK}" ${F}>${b.t}</text>`;
-    s+=`<text x="${W-pad}" y="${y+20}" text-anchor="end" font-size="11.5" fill="${C.INKSOFT}" ${F}>${b.s}</text>`;
-    const peak=peakInfo(b.d);
-    const info = peak? `${b.tot} ед.  ·  пик ${peak.hh}:00–${peak.hh2}:00 — ${peak.val} ед.` : `${b.tot} ед.`;
-    s+=`<text x="${pad}" y="${y+42}" font-size="12.5" font-weight="600" fill="${peak?C.PEAKINK:C.INKSOFT}" ${F}>${info}</text>`;
+    if(cmp){
+      s+=`<text x="${W-pad}" y="${y+14}" text-anchor="end" font-size="11" fill="${C.INKSOFT}" ${F}>осн.: ${b.s}</text>`;
+      s+=`<text x="${W-pad}" y="${y+30}" text-anchor="end" font-size="11" fill="${C.INKSOFT}" ${F}>сравн.: ${b.sB}</text>`;
+      const pA=peakInfo(b.d), pB=peakInfo(b.dB), dd=b.totB-b.tot, dTxt=(dd>=0?'+':'')+dd;
+      s+=`<text x="${pad}" y="${y+42}" font-size="12.5" font-weight="600" fill="${C.INK}" ${F}>Всего: ${b.tot} ед. (осн.) · ${b.totB} ед. (сравн.) · разница ${dTxt} ед.</text>`;
+      const pkA = pA?`осн. пик ${pA.hh}:00 — ${pA.val}`:'осн. —';
+      const pkB = pB?`сравн. пик ${pB.hh}:00 — ${pB.val}`:'сравн. —';
+      s+=`<text x="${pad}" y="${y+60}" font-size="12" font-weight="600" fill="${C.CMPINK}" ${F}>${pkA}  ·  ${pkB}</text>`;
+    } else {
+      s+=`<text x="${W-pad}" y="${y+20}" text-anchor="end" font-size="11.5" fill="${C.INKSOFT}" ${F}>${b.s}</text>`;
+      const peak=peakInfo(b.d);
+      const info = peak? `${b.tot} ед.  ·  пик ${peak.hh}:00–${peak.hh2}:00 — ${peak.val} ед.` : `${b.tot} ед.`;
+      s+=`<text x="${pad}" y="${y+42}" font-size="12.5" font-weight="600" fill="${peak?C.PEAKINK:C.INKSOFT}" ${F}>${info}</text>`;
+    }
     y+=blockHead;
-    if(b.tot>0){ s+=chartMarkup(b.d,pad,y,chartW,chartH); }
+    const hasData = b.tot>0 || (cmp && b.totB>0);
+    if(hasData){ s+=chartMarkup(b.d,pad,y,chartW,chartH,cmp?b.dB:undefined); }
     else { s+=`<rect x="${pad}" y="${y+40}" width="${chartW}" height="${chartH-80}" rx="10" fill="#F6F8F7" stroke="#C7D2CE" stroke-dasharray="5 4"/><text x="${W/2}" y="${y+chartH/2}" text-anchor="middle" font-size="14" fill="${C.INKSOFT}" ${F}>Нет заказов за этот период</text>`; }
     y+=chartH+blockGap;
   }
@@ -902,6 +1009,45 @@ function wireMasthead(){
 function wireDetail(){
   const exp=document.getElementById('exportBtn'); if(exp) exp.onclick=exportPNG;
   const cp=document.getElementById('copyBtn'); if(cp) cp.onclick=copyReport;
+  const cb=document.getElementById('compareBtn'); if(cb) cb.onclick=openCompareModal;
+  const ex=document.getElementById('exitCompareBtn'); if(ex) ex.onclick=()=>{ compareWith=null; refreshDetail(); };
+}
+function refreshDetail(){ const d=document.getElementById('detail'); if(d){ d.innerHTML=detailView(); wireDetail(); } }
+
+/* ---------- compare: pick a profile, match by SKU ---------- */
+function compareModalView(){
+  const sku=selectedSku;
+  const others=PROFILES.filter(p=>p.id!==activeId);
+  const rows=others.map(p=>{
+    const dd=loadProfileData(p.id);
+    const found = dd&&dd.products ? dd.products.find(x=>x.sku===sku) : null;
+    const meta = found
+      ? `${found.mTot} ${plural(found.mTot,'ед.','ед.','ед.')} за месяц · ${dd.meta.minDate} – ${dd.meta.maxDate}`
+      : 'нет этого товара';
+    return `<div class="prow ${found?'':'disabled'}">
+      <button class="popen" ${found?`data-cmp="${p.id}"`:'disabled'}>
+        <span class="pn">${escapeHtml(p.name)}</span>
+        <span class="pm">${escapeHtml(meta)}</span>
+      </button>
+    </div>`;
+  }).join('');
+  const body = others.length ? rows : `<div class="empty">Нет других профилей для сравнения</div>`;
+  return `<div class="overlay" id="cmpOverlay"><div class="modal">
+    <div class="modal-head"><h3>Сравнить с профилем</h3><button class="mclose" id="cmpClose" title="Закрыть">✕</button></div>
+    <div class="cmp-hint">Товар найдётся автоматически по SKU ${escapeHtml(sku)}. Профили без этого товара недоступны.</div>
+    <div class="prows">${body}</div>
+  </div></div>`;
+}
+function openCompareModal(){
+  const host=document.getElementById('modalHost'); if(!host) return;
+  const wrap=document.createElement('div'); wrap.innerHTML=compareModalView();
+  const ov=wrap.firstElementChild; host.appendChild(ov); wireCompareModal(ov);
+}
+function wireCompareModal(ov){
+  const close=()=>{ if(ov&&ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.addEventListener('mousedown',e=>{ if(e.target===ov) close(); });
+  const cl=ov.querySelector('#cmpClose'); if(cl) cl.onclick=close;
+  ov.querySelectorAll('[data-cmp]').forEach(b=>b.onclick=()=>{ compareWith=b.dataset.cmp; close(); refreshDetail(); });
 }
 function toggleChart(type){
   const onCount=Object.values(charts).filter(Boolean).length;
