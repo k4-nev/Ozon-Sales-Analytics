@@ -12,3 +12,7 @@ electron/app/index.html      # генерируется скриптом сбо�
 *.log
 .DS_Store
 Thumbs.db
+
+# local flat-root build artifacts
+/app/
+/build/
